@@ -132,7 +132,7 @@ const html = `<!DOCTYPE html>
             btn.disabled = true;
             status.textContent = 'Запуск теста...';
             status.className = 'status';
-            output.textContent = 'Запуск теста на ' + target + '...\n\n';
+            output.textContent = 'Запуск теста на ' + target + '...\\n\\n';
             
             console.log('[CLIENT] Starting fetch to /api/run-test');
             console.log('[CLIENT] Target:', target);
