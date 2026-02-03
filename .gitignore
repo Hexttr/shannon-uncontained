@@ -35,4 +35,8 @@ Thumbs.db
 *.pem
 *.key
 credentials.json
+*.env.local
+.env.local
+.env
+!server_config/.env.example
 
