@@ -250,6 +250,14 @@ const server = http.createServer((req, res) => {
                 const command = `cd ${PROJECT_PATH} && export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && node shannon.mjs generate ${target} --no-ai 2>&1`;
                 console.log('[WEB] Starting test:', target);
                 console.log('[WEB] Command:', command);
+                console.log('[WEB] PROJECT_PATH:', PROJECT_PATH);
+                
+                // Отправить начальное сообщение
+                try {
+                    res.write('data: ' + JSON.stringify({ type: 'output', data: 'Запуск теста на ' + target + '...\\n' }) + '\\n\\n');
+                } catch (e) {
+                    console.error('[WEB] Initial write error:', e);
+                }
                 
                 res.writeHead(200, {
                     'Content-Type': 'text/event-stream',
@@ -258,6 +266,8 @@ const server = http.createServer((req, res) => {
                     'Access-Control-Allow-Origin': '*',
                     'X-Accel-Buffering': 'no'
                 });
+                
+                console.log('[WEB] Executing command...');
                 
                 const child = exec(command, { 
                     cwd: PROJECT_PATH,
@@ -268,24 +278,33 @@ const server = http.createServer((req, res) => {
                         NODE_NO_WARNINGS: '1'
                     },
                     maxBuffer: 10 * 1024 * 1024 // 10MB
+                }, (error, stdout, stderr) => {
+                    console.log('[WEB] Exec callback - error:', error ? error.message : 'none');
+                    console.log('[WEB] Exec callback - stdout length:', stdout ? stdout.length : 0);
+                    console.log('[WEB] Exec callback - stderr length:', stderr ? stderr.length : 0);
                 });
+                
+                console.log('[WEB] Child process PID:', child.pid);
                 
                 // Отключить буферизацию
                 child.stdout.setEncoding('utf8');
                 child.stderr.setEncoding('utf8');
                 
                 let hasData = false;
+                let stdoutChunks = 0;
+                let stderrChunks = 0;
                 
                 child.stdout.on('data', (data) => {
                     hasData = true;
+                    stdoutChunks++;
                     const text = data.toString();
-                    console.log('[WEB] stdout chunk:', text.length, 'bytes');
+                    console.log('[WEB] stdout chunk', stdoutChunks, ':', text.length, 'bytes, preview:', text.substring(0, 100));
                     try {
                         const message = 'data: ' + JSON.stringify({ type: 'output', data: text }) + '\\n\\n';
                         if (!res.destroyed) {
                             res.write(message);
                         } else {
-                            console.log('[WEB] Response destroyed, stopping');
+                            console.log('[WEB] Response destroyed, stopping stdout');
                         }
                     } catch (e) {
                         console.error('[WEB] Write error:', e);
@@ -294,14 +313,18 @@ const server = http.createServer((req, res) => {
                 
                 child.stderr.on('data', (data) => {
                     hasData = true;
+                    stderrChunks++;
                     const text = data.toString();
+                    console.log('[WEB] stderr chunk', stderrChunks, ':', text.length, 'bytes');
                     try {
                         const message = 'data: ' + JSON.stringify({ type: 'error', data: text }) + '\\n\\n';
                         if (!res.destroyed) {
                             res.write(message);
+                        } else {
+                            console.log('[WEB] Response destroyed, stopping stderr');
                         }
                     } catch (e) {
-                        // Игнорировать ошибки если соединение закрыто
+                        console.error('[WEB] stderr write error:', e);
                     }
                 });
                 
