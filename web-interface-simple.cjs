@@ -134,12 +134,18 @@ const html = `<!DOCTYPE html>
             status.className = 'status';
             output.textContent = 'Запуск теста на ' + target + '...\\n\\n';
             
+            console.log('[CLIENT] Starting fetch to /api/run-test');
+            console.log('[CLIENT] Target:', target);
+            
             fetch('/api/run-test', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ target: target })
             })
             .then(response => {
+                console.log('[CLIENT] Response status:', response.status);
+                console.log('[CLIENT] Response headers:', response.headers.get('content-type'));
+                
                 if (!response.ok) {
                     throw new Error('HTTP ' + response.status);
                 }
@@ -147,15 +153,20 @@ const html = `<!DOCTYPE html>
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
                 let buffer = '';
+                let chunkCount = 0;
                 
                 function readStream() {
                     reader.read().then(({ done, value }) => {
                         if (done) {
+                            console.log('[CLIENT] Stream done, chunks received:', chunkCount);
                             btn.disabled = false;
                             status.textContent = 'Тест завершен';
                             status.className = 'status';
                             return;
                         }
+                        
+                        chunkCount++;
+                        console.log('[CLIENT] Received chunk', chunkCount, 'size:', value ? value.length : 0);
                         
                         buffer += decoder.decode(value, { stream: true });
                         const lines = buffer.split('\\n');
@@ -165,22 +176,26 @@ const html = `<!DOCTYPE html>
                             if (line.startsWith('data: ')) {
                                 try {
                                     const data = JSON.parse(line.slice(6));
+                                    console.log('[CLIENT] Parsed data:', data.type);
                                     if (data.type === 'output' || data.type === 'error') {
                                         output.textContent += data.data;
                                         output.scrollTop = output.scrollHeight;
                                     } else if (data.type === 'done') {
+                                        console.log('[CLIENT] Test done, code:', data.code);
                                         btn.disabled = false;
                                         status.textContent = data.code === 0 ? 'Тест завершен успешно' : 'Тест завершен с ошибкой (код: ' + data.code + ')';
                                         status.className = data.code === 0 ? 'status' : 'status error';
+                                        return;
                                     }
                                 } catch (e) {
-                                    // Игнорировать ошибки парсинга
+                                    console.error('[CLIENT] Parse error:', e, 'line:', line.substring(0, 100));
                                 }
                             }
                         }
                         
                         readStream();
                     }).catch(error => {
+                        console.error('[CLIENT] Read error:', error);
                         btn.disabled = false;
                         status.textContent = 'Ошибка: ' + error.message;
                         status.className = 'status error';
