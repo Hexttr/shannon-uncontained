@@ -264,7 +264,8 @@ const server = http.createServer((req, res) => {
                 const workspacePath = `${PROJECT_PATH}/shannon-results/repos/${domain}`;
                 
                 // Удалить существующий workspace чтобы запустить полный тест
-                const command = `cd ${PROJECT_PATH} && rm -rf "${workspacePath}" 2>/dev/null; export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && node shannon.mjs generate "${target}" --no-ai 2>&1`;
+                // Используем Ollama (убрали --no-ai)
+                const command = `cd ${PROJECT_PATH} && rm -rf "${workspacePath}" 2>/dev/null; export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && node shannon.mjs generate "${target}" 2>&1`;
                 console.log('[WEB] Starting test:', target);
                 console.log('[WEB] Command:', command);
                 console.log('[WEB] PROJECT_PATH:', PROJECT_PATH);
