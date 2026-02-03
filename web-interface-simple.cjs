@@ -231,7 +231,8 @@ const server = http.createServer((req, res) => {
         req.on('end', () => {
             try {
                 const { target } = JSON.parse(body);
-                const command = `cd ${PROJECT_PATH} && export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && node shannon.mjs generate ${target} --no-ai 2>&1`;
+                // Использовать unbuffered вывод и отключить resume для нового теста
+                const command = `cd ${PROJECT_PATH} && export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && node -u shannon.mjs generate ${target} --no-ai 2>&1 | stdbuf -oL -eL cat`;
                 
                 res.writeHead(200, {
                     'Content-Type': 'text/event-stream',
@@ -241,32 +242,68 @@ const server = http.createServer((req, res) => {
                     'X-Accel-Buffering': 'no'
                 });
                 
-                const child = exec(command, { cwd: PROJECT_PATH });
+                const child = exec(command, { 
+                    cwd: PROJECT_PATH,
+                    env: { 
+                        ...process.env, 
+                        NODE_ENV: 'production',
+                        PYTHONUNBUFFERED: '1',
+                        NODE_NO_WARNINGS: '1'
+                    },
+                    maxBuffer: 10 * 1024 * 1024 // 10MB
+                });
+                
+                // Отключить буферизацию
+                child.stdout.setEncoding('utf8');
+                child.stderr.setEncoding('utf8');
+                
+                let hasData = false;
                 
                 child.stdout.on('data', (data) => {
+                    hasData = true;
+                    const text = data.toString();
                     try {
-                        res.write('data: ' + JSON.stringify({ type: 'output', data: data.toString() }) + '\\n\\n');
-                    } catch (e) {}
+                        const message = 'data: ' + JSON.stringify({ type: 'output', data: text }) + '\\n\\n';
+                        res.write(message);
+                        // Принудительно отправить данные
+                        if (res.flushHeaders) res.flushHeaders();
+                    } catch (e) {
+                        console.error('Write error:', e);
+                    }
                 });
                 
                 child.stderr.on('data', (data) => {
+                    hasData = true;
+                    const text = data.toString();
                     try {
-                        res.write('data: ' + JSON.stringify({ type: 'error', data: data.toString() }) + '\\n\\n');
-                    } catch (e) {}
+                        const message = 'data: ' + JSON.stringify({ type: 'error', data: text }) + '\\n\\n';
+                        res.write(message);
+                        if (res.flushHeaders) res.flushHeaders();
+                    } catch (e) {
+                        console.error('Write error:', e);
+                    }
                 });
                 
                 child.on('close', (code) => {
                     try {
+                        if (!hasData) {
+                            res.write('data: ' + JSON.stringify({ type: 'output', data: '\\n[WARNING] Команда завершилась без вывода. Код: ' + code + '\\n' }) + '\\n\\n');
+                        }
                         res.write('data: ' + JSON.stringify({ type: 'done', code: code }) + '\\n\\n');
                         res.end();
-                    } catch (e) {}
+                    } catch (e) {
+                        console.error('Close error:', e);
+                    }
                 });
                 
                 child.on('error', (error) => {
                     try {
-                        res.write('data: ' + JSON.stringify({ type: 'error', data: error.message }) + '\\n\\n');
+                        res.write('data: ' + JSON.stringify({ type: 'error', data: 'Ошибка запуска: ' + error.message + '\\n' }) + '\\n\\n');
+                        res.write('data: ' + JSON.stringify({ type: 'done', code: 1 }) + '\\n\\n');
                         res.end();
-                    } catch (e) {}
+                    } catch (e) {
+                        console.error('Error handler:', e);
+                    }
                 });
                 
                 req.on('close', () => {
