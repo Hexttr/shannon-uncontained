@@ -170,14 +170,15 @@ const html = `<!DOCTYPE html>
                         
                         buffer += decoder.decode(value, { stream: true });
                         // Разделить по двойным переносам строк (SSE формат)
-                        const parts = buffer.split('\\n\\n');
+                        // ВАЖНО: используем реальные символы новой строки, не строку "\\n"
+                        const parts = buffer.split('\n\n');
                         buffer = parts.pop() || ''; // Сохранить неполную часть
                         
                         for (const part of parts) {
                             if (!part.trim()) continue;
                             
                             // Найти строку начинающуюся с 'data: '
-                            const lines = part.split('\\n');
+                            const lines = part.split('\n');
                             for (const line of lines) {
                                 if (line.trim().startsWith('data: ')) {
                                     try {
@@ -188,7 +189,9 @@ const html = `<!DOCTYPE html>
                                         
                                         if (data.type === 'output' || data.type === 'error') {
                                             if (data.data) {
-                                                output.textContent += data.data;
+                                                // Заменить экранированные символы на реальные
+                                                const displayData = data.data.replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+                                                output.textContent += displayData;
                                                 // Автопрокрутка
                                                 output.scrollTop = output.scrollHeight;
                                             }
@@ -203,12 +206,13 @@ const html = `<!DOCTYPE html>
                                         console.error('[CLIENT] Parse error:', e, 'line:', line.substring(0, 200));
                                         // Попробовать показать сырые данные если парсинг не удался
                                         if (line.length > 6) {
-                                            output.textContent += '\\n[RAW] ' + line.substring(0, 100) + '\\n';
+                                            output.textContent += '\n[RAW] ' + line.substring(0, 100) + '\n';
+                                            output.scrollTop = output.scrollHeight;
                                         }
                                     }
-                                } else if (line.trim() && !line.startsWith('data:')) {
+                                } else if (line.trim() && !line.startsWith('data:') && !line.startsWith('event:')) {
                                     // Показать необработанные строки
-                                    output.textContent += line + '\\n';
+                                    output.textContent += line + '\n';
                                     output.scrollTop = output.scrollHeight;
                                 }
                             }
@@ -298,7 +302,7 @@ const server = http.createServer((req, res) => {
                 
                 // Отправить начальное сообщение
                 try {
-                    res.write('data: ' + JSON.stringify({ type: 'output', data: 'Запуск теста на ' + target + '...\\n' }) + '\\n\\n');
+                    res.write('data: ' + JSON.stringify({ type: 'output', data: 'Запуск теста на ' + target + '...\n' }) + '\n\n');
                 } catch (e) {
                     console.error('[WEB] Initial write error:', e);
                 }
