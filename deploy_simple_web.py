@@ -1,18 +1,41 @@
-#!/usr/bin/env node
-/**
- * Простой веб-интерфейс для Shannon-Uncontained
- * Только поле ввода, кнопка и вывод CLI
- */
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Развертывание упрощенного веб-интерфейса
+"""
+import paramiko
+import sys
+import os
 
+SERVER_IP = "72.56.79.153"
+SERVER_USER = "root"
+SERVER_PASS = "m8J@2_6whwza6U"
+
+if sys.platform == 'win32':
+    os.environ['PYTHONIOENCODING'] = 'utf-8'
+    sys.stdout.reconfigure(encoding='utf-8') if hasattr(sys.stdout, 'reconfigure') else None
+
+def main():
+    print("=" * 80)
+    print("🚀 РАЗВЕРТЫВАНИЕ УПРОЩЕННОГО ВЕБ-ИНТЕРФЕЙСА")
+    print("=" * 80)
+    
+    # Читаем упрощенный файл
+    print("\n📖 Чтение web-interface-simple.cjs...")
+    try:
+        with open('web-interface-simple.cjs', 'r', encoding='utf-8') as f:
+            content = f.read()
+        print(f"✅ Файл прочитан ({len(content)} байт)")
+    except FileNotFoundError:
+        # Если файл не найден, создаем упрощенную версию напрямую
+        print("⚠️  Файл не найден, создаю упрощенную версию...")
+        content = """#!/usr/bin/env node
 const http = require('http');
 const { exec } = require('child_process');
-const { promisify } = require('util');
-const execAsync = promisify(exec);
 
 const PORT = 3000;
 const PROJECT_PATH = process.cwd() || __dirname;
 
-// Простой HTML интерфейс
 const html = `<!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -130,12 +153,10 @@ const html = `<!DOCTYPE html>
                 return;
             }
             
-            // Блокируем кнопку
             button.disabled = true;
             statusDiv.innerHTML = '<div class="status info">Запуск пентеста...</div>';
             outputDiv.textContent = 'Запуск...\\n';
             
-            // Запускаем тест через SSE
             const eventSource = new EventSource('/api/run-test?target=' + encodeURIComponent(target));
             
             eventSource.onmessage = function(event) {
@@ -170,7 +191,6 @@ const html = `<!DOCTYPE html>
 </html>`;
 
 const server = http.createServer(async (req, res) => {
-    // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -181,14 +201,12 @@ const server = http.createServer(async (req, res) => {
         return;
     }
     
-    // Главная страница
     if (req.url === '/' || req.url === '/index.html') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(html);
         return;
     }
     
-    // API: запуск теста через SSE
     if (req.url.startsWith('/api/run-test')) {
         const url = new URL(req.url, 'http://localhost');
         const target = url.searchParams.get('target');
@@ -199,25 +217,21 @@ const server = http.createServer(async (req, res) => {
             return;
         }
         
-        // Настраиваем SSE
         res.writeHead(200, {
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache',
             'Connection': 'keep-alive'
         });
         
-        // Отправляем начальное сообщение
         res.write('data: ' + JSON.stringify({ type: 'output', data: 'Запуск пентеста для ' + target + '...\\n' }) + '\\n\\n');
         
-        // Запускаем команду
-        const command = `cd ${PROJECT_PATH} && export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin:$HOME/.cargo/bin:$HOME/.local/bin:/usr/local/bin && export GOPATH=$HOME/go && source $HOME/.cargo/env 2>/dev/null || true && ./shannon.mjs generate "${target}" --workspace ./test-output 2>&1`;
+        const command = 'cd ' + PROJECT_PATH + ' && export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin:$HOME/.cargo/bin:$HOME/.local/bin:/usr/local/bin && export GOPATH=$HOME/go && source $HOME/.cargo/env 2>/dev/null || true && ./shannon.mjs generate "' + target + '" --workspace ./test-output 2>&1';
         
         const child = exec(command, {
             cwd: PROJECT_PATH,
             env: { ...process.env, PATH: process.env.PATH + ':/usr/local/go/bin:/root/go/bin:/root/.cargo/bin:/root/.local/bin:/usr/local/bin' }
         });
         
-        // Отправляем вывод в реальном времени
         child.stdout.on('data', (data) => {
             const lines = data.toString().split('\\n');
             for (const line of lines) {
@@ -250,12 +264,112 @@ const server = http.createServer(async (req, res) => {
         return;
     }
     
-    // 404
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     res.end('Not Found');
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Простой веб-интерфейс запущен на http://0.0.0.0:${PORT}`);
-    console.log(`📁 Проект: ${PROJECT_PATH}`);
+    console.log('🚀 Простой веб-интерфейс запущен на http://0.0.0.0:' + PORT);
+    console.log('📁 Проект: ' + PROJECT_PATH);
 });
+"""
+        print(f"✅ Упрощенная версия создана ({len(content)} байт)")
+    except Exception as e:
+        print(f"❌ Ошибка: {e}")
+        return
+    
+    # Подключаемся к серверу
+    print("\n🔌 Подключение к серверу...")
+    ssh = paramiko.SSHClient()
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    ssh.connect(SERVER_IP, username=SERVER_USER, password=SERVER_PASS, timeout=10)
+    
+    PROJECT_PATH = "/root/shannon-uncontained"
+    
+    # Останавливаем старый процесс
+    print("\n🛑 Остановка старого процесса...")
+    stdin, stdout, stderr = ssh.exec_command("pkill -f 'web-interface' || true")
+    stdout.read()
+    import time
+    time.sleep(2)
+    
+    # Загружаем новый файл (заменяем старый)
+    print("📤 Загрузка упрощенного интерфейса...")
+    sftp = ssh.open_sftp()
+    try:
+        remote_file = sftp.file(f"{PROJECT_PATH}/web-interface.cjs", 'w')
+        remote_file.write(content)
+        remote_file.close()
+        print("✅ Файл загружен")
+    except Exception as e:
+        print(f"❌ Ошибка загрузки: {e}")
+        sftp.close()
+        ssh.close()
+        return
+    finally:
+        sftp.close()
+    
+    # Устанавливаем права
+    stdin, stdout, stderr = ssh.exec_command(f"chmod +x {PROJECT_PATH}/web-interface.cjs")
+    stdout.read()
+    
+    # Проверяем синтаксис
+    print("\n✅ Проверка синтаксиса...")
+    stdin, stdout, stderr = ssh.exec_command(f"cd {PROJECT_PATH} && node -c web-interface.cjs")
+    exit_status = stdout.channel.recv_exit_status()
+    if exit_status == 0:
+        print("✅ Синтаксис корректен")
+    else:
+        error = stderr.read().decode('utf-8')
+        print(f"⚠️  Ошибки синтаксиса:\n{error[:500]}")
+    
+    # Запускаем веб-интерфейс
+    print("\n🚀 Запуск веб-интерфейса...")
+    stdin, stdout, stderr = ssh.exec_command(
+        f"cd {PROJECT_PATH} && nohup node web-interface.cjs > /tmp/web-interface.log 2>&1 &"
+    )
+    stdout.read()
+    time.sleep(2)
+    
+    # Проверяем что запустился
+    stdin, stdout, stderr = ssh.exec_command("ps aux | grep 'web-interface.cjs' | grep -v grep")
+    output = stdout.read().decode('utf-8')
+    if output.strip():
+        print("✅ Веб-интерфейс запущен")
+        print(f"   Процесс: {output.strip()[:100]}")
+    else:
+        print("⚠️  Процесс не найден, проверяем логи...")
+        stdin, stdout, stderr = ssh.exec_command("tail -30 /tmp/web-interface.log")
+        log_output = stdout.read().decode('utf-8')
+        if log_output:
+            print(f"   Логи:\n{log_output}")
+    
+    # Проверяем порт
+    stdin, stdout, stderr = ssh.exec_command("ss -tlnp 2>/dev/null | grep :3000 || netstat -tlnp 2>/dev/null | grep :3000")
+    port_output = stdout.read().decode('utf-8')
+    if port_output.strip():
+        print(f"✅ Порт 3000 слушается")
+    else:
+        print("⚠️  Порт 3000 не найден")
+    
+    ssh.close()
+    
+    print("\n" + "=" * 80)
+    print("✅ ГОТОВО")
+    print("=" * 80)
+    print("\n🌐 Упрощенный веб-интерфейс:")
+    print("   http://72.56.79.153:3000")
+    print("\n📝 Функции:")
+    print("   - Поле для ввода URL цели")
+    print("   - Кнопка запуска")
+    print("   - Вывод CLI в реальном времени")
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        print(f"\n❌ Ошибка: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
