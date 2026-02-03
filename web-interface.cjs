@@ -139,7 +139,7 @@ const html = `<!DOCTYPE html>
                     <option value="express">Express.js</option>
                     <option value="fastapi">FastAPI</option>
                 </select>
-                <button onclick="runTest()">Запустить тест</button>
+                <button onclick="runTest(event)">Запустить тест</button>
                 <div id="testStatus"></div>
                 <div id="testOutput" class="output" style="display:none;"></div>
             </div>
@@ -172,12 +172,15 @@ const html = `<!DOCTYPE html>
             const framework = document.getElementById('framework').value;
             const statusDiv = document.getElementById('testStatus');
             const outputDiv = document.getElementById('testOutput');
+            const button = event.target;
             
             if (!target) {
                 statusDiv.innerHTML = '<div class="status error">Введите URL цели</div>';
                 return;
             }
             
+            // Блокировать кнопку
+            button.disabled = true;
             statusDiv.innerHTML = '<div class="status info">Запуск теста...</div>';
             outputDiv.style.display = 'block';
             outputDiv.textContent = '';
@@ -189,15 +192,21 @@ const html = `<!DOCTYPE html>
                     body: JSON.stringify({ target, framework })
                 });
                 
+                if (!response.ok) {
+                    throw new Error('HTTP error: ' + response.status);
+                }
+                
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
+                let buffer = '';
                 
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
                     
-                    const chunk = decoder.decode(value);
-                    const lines = chunk.split('\n');
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || ''; // Сохранить неполную строку
                     
                     for (const line of lines) {
                         if (line.startsWith('data: ')) {
@@ -208,22 +217,31 @@ const html = `<!DOCTYPE html>
                                     outputDiv.textContent += data.data;
                                     outputDiv.scrollTop = outputDiv.scrollHeight;
                                 } else if (data.type === 'done') {
+                                    button.disabled = false;
                                     if (data.code === 0) {
                                         statusDiv.innerHTML = '<div class="status success">Тест завершен успешно!</div>';
                                         loadWorkspaces();
                                     } else {
                                         statusDiv.innerHTML = '<div class="status error">Тест завершен с ошибкой (код: ' + data.code + ')</div>';
                                     }
+                                    return;
                                 }
                             } catch (e) {
-                                // Игнорировать ошибки парсинга
+                                console.error('Parse error:', e, line);
                             }
                         }
                     }
                 }
+                
+                // Если поток завершился без сообщения done
+                button.disabled = false;
+                statusDiv.innerHTML = '<div class="status info">Тест завершен</div>';
+                loadWorkspaces();
             } catch (error) {
+                button.disabled = false;
                 statusDiv.innerHTML = '<div class="status error">Ошибка: ' + error.message + '</div>';
                 outputDiv.textContent += '\n[ERROR] ' + error.message;
+                console.error('Test error:', error);
             }
         }
         
@@ -316,7 +334,7 @@ const server = http.createServer(async (req, res) => {
     if (req.url === '/api/run-test' && req.method === 'POST') {
         let body = '';
         req.on('data', chunk => { body += chunk.toString(); });
-        req.on('end', async () => {
+        req.on('end', () => {
             try {
                 const { target, framework } = JSON.parse(body);
                 const command = `cd ${PROJECT_PATH} && export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && node shannon.mjs generate ${target} --framework ${framework} 2>&1`;
@@ -326,28 +344,58 @@ const server = http.createServer(async (req, res) => {
                     'Content-Type': 'text/event-stream',
                     'Cache-Control': 'no-cache',
                     'Connection': 'keep-alive',
-                    'Access-Control-Allow-Origin': '*'
+                    'Access-Control-Allow-Origin': '*',
+                    'X-Accel-Buffering': 'no'
                 });
                 
                 // Запустить команду с потоковым выводом
                 const child = exec(command, { cwd: PROJECT_PATH });
                 
+                let hasData = false;
+                
                 child.stdout.on('data', (data) => {
-                    res.write(`data: ${JSON.stringify({ type: 'output', data: data.toString() })}\n\n`);
+                    hasData = true;
+                    const text = data.toString();
+                    try {
+                        res.write(`data: ${JSON.stringify({ type: 'output', data: text })}\n\n`);
+                    } catch (e) {
+                        // Игнорировать ошибки записи если клиент отключился
+                    }
                 });
                 
                 child.stderr.on('data', (data) => {
-                    res.write(`data: ${JSON.stringify({ type: 'error', data: data.toString() })}\n\n`);
+                    hasData = true;
+                    const text = data.toString();
+                    try {
+                        res.write(`data: ${JSON.stringify({ type: 'error', data: text })}\n\n`);
+                    } catch (e) {
+                        // Игнорировать ошибки записи если клиент отключился
+                    }
                 });
                 
                 child.on('close', (code) => {
-                    res.write(`data: ${JSON.stringify({ type: 'done', code: code })}\n\n`);
-                    res.end();
+                    try {
+                        res.write(`data: ${JSON.stringify({ type: 'done', code: code })}\n\n`);
+                        res.end();
+                    } catch (e) {
+                        // Игнорировать если уже закрыто
+                    }
                 });
                 
                 child.on('error', (error) => {
-                    res.write(`data: ${JSON.stringify({ type: 'error', data: error.message })}\n\n`);
-                    res.end();
+                    try {
+                        res.write(`data: ${JSON.stringify({ type: 'error', data: error.message })}\n\n`);
+                        res.end();
+                    } catch (e) {
+                        // Игнорировать если уже закрыто
+                    }
+                });
+                
+                // Обработка закрытия соединения клиентом
+                req.on('close', () => {
+                    if (!child.killed) {
+                        child.kill('SIGTERM');
+                    }
                 });
             } catch (error) {
                 res.writeHead(200, { 'Content-Type': 'application/json' });
