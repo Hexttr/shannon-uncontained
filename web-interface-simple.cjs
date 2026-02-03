@@ -169,30 +169,47 @@ const html = `<!DOCTYPE html>
                         console.log('[CLIENT] Received chunk', chunkCount, 'size:', value ? value.length : 0);
                         
                         buffer += decoder.decode(value, { stream: true });
-                        const lines = buffer.split('\\n');
-                        buffer = lines.pop() || '';
+                        // Разделить по двойным переносам строк (SSE формат)
+                        const parts = buffer.split('\\n\\n');
+                        buffer = parts.pop() || ''; // Сохранить неполную часть
                         
-                        for (const line of lines) {
-                            if (line.trim() && line.startsWith('data: ')) {
-                                try {
-                                    const jsonStr = line.slice(6).trim();
-                                    if (!jsonStr) continue;
-                                    const data = JSON.parse(jsonStr);
-                                    console.log('[CLIENT] Parsed data:', data.type, 'data length:', data.data ? data.data.length : 0);
-                                    if (data.type === 'output' || data.type === 'error') {
-                                        if (data.data) {
-                                            output.textContent += data.data;
-                                            output.scrollTop = output.scrollHeight;
+                        for (const part of parts) {
+                            if (!part.trim()) continue;
+                            
+                            // Найти строку начинающуюся с 'data: '
+                            const lines = part.split('\\n');
+                            for (const line of lines) {
+                                if (line.trim().startsWith('data: ')) {
+                                    try {
+                                        const jsonStr = line.slice(6).trim();
+                                        if (!jsonStr) continue;
+                                        const data = JSON.parse(jsonStr);
+                                        console.log('[CLIENT] Parsed data:', data.type, 'data length:', data.data ? data.data.length : 0);
+                                        
+                                        if (data.type === 'output' || data.type === 'error') {
+                                            if (data.data) {
+                                                output.textContent += data.data;
+                                                // Автопрокрутка
+                                                output.scrollTop = output.scrollHeight;
+                                            }
+                                        } else if (data.type === 'done') {
+                                            console.log('[CLIENT] Test done, code:', data.code);
+                                            btn.disabled = false;
+                                            status.textContent = data.code === 0 ? 'Тест завершен успешно' : 'Тест завершен с ошибкой (код: ' + data.code + ')';
+                                            status.className = data.code === 0 ? 'status' : 'status error';
+                                            return;
                                         }
-                                    } else if (data.type === 'done') {
-                                        console.log('[CLIENT] Test done, code:', data.code);
-                                        btn.disabled = false;
-                                        status.textContent = data.code === 0 ? 'Тест завершен успешно' : 'Тест завершен с ошибкой (код: ' + data.code + ')';
-                                        status.className = data.code === 0 ? 'status' : 'status error';
-                                        return;
+                                    } catch (e) {
+                                        console.error('[CLIENT] Parse error:', e, 'line:', line.substring(0, 200));
+                                        // Попробовать показать сырые данные если парсинг не удался
+                                        if (line.length > 6) {
+                                            output.textContent += '\\n[RAW] ' + line.substring(0, 100) + '\\n';
+                                        }
                                     }
-                                } catch (e) {
-                                    console.error('[CLIENT] Parse error:', e, 'line:', line.substring(0, 200));
+                                } else if (line.trim() && !line.startsWith('data:')) {
+                                    // Показать необработанные строки
+                                    output.textContent += line + '\\n';
+                                    output.scrollTop = output.scrollHeight;
                                 }
                             }
                         }
