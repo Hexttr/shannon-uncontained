@@ -94,7 +94,9 @@ def main():
         print("\n[INFO] Распаковка и установка на сервере...")
         commands = [
             f"cd /root && rm -rf {REMOTE_PATH}",
-            f"cd /root && tar -xzf {REMOTE_PATH}.tar.gz",
+            f"cd /root && mkdir -p {REMOTE_PATH}",
+            f"cd /root && tar -xzf {REMOTE_PATH}.tar.gz -C {REMOTE_PATH} --strip-components=0",
+            f"cd {REMOTE_PATH} && ls -la | head -20",
             f"cd {REMOTE_PATH} && export NVM_DIR=\"$HOME/.nvm\" && [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\" && npm install",
             f"cd {REMOTE_PATH} && cp .env.example .env || true",
             f"rm -f {REMOTE_PATH}.tar.gz",
