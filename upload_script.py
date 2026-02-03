@@ -54,23 +54,24 @@ client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 client.connect(hostname=HOST, username=USERNAME, password=PASSWORD, timeout=30)
 print(f"[OK] Подключено к {HOST}\n")
 
-# Загрузить и выполнить скрипт проверки
-with open('verify_test_completion.py', 'r', encoding='utf-8') as f:
+# Загрузить и выполнить скрипт анализа
+with open('analyze_execution.py', 'r', encoding='utf-8') as f:
     script_content = f.read()
 
-remote_path = f"{PROJECT_PATH}/verify_test_completion.py"
+remote_path = f"{PROJECT_PATH}/analyze_execution.py"
 sftp = client.open_sftp()
 try:
     with sftp.file(remote_path, 'w') as f:
         f.write(script_content)
     sftp.chmod(remote_path, 0o755)
-    print(f"[OK] Загружен: verify_test_completion.py")
+    print(f"[OK] Загружен: analyze_execution.py")
 finally:
     sftp.close()
 
-print(f"[INFO] Выполнение verify_test_completion.py...")
-stdin, stdout, stderr = client.exec_command(f"cd {PROJECT_PATH} && python3 verify_test_completion.py")
+print(f"[INFO] Выполнение analyze_execution.py...")
+stdin, stdout, stderr = client.exec_command(f"cd {PROJECT_PATH} && python3 analyze_execution.py", get_pty=True)
 
+import time
 output_lines = []
 while True:
     if stdout.channel.exit_status_ready():
@@ -80,6 +81,7 @@ while True:
         if data:
             print(data, end='', flush=True)
             output_lines.append(data)
+    time.sleep(0.1)
 
 exit_status = stdout.channel.recv_exit_status()
 remaining = stdout.read().decode('utf-8', errors='ignore')
