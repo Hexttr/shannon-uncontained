@@ -265,14 +265,7 @@ const server = http.createServer((req, res) => {
                 console.log('[WEB] Command:', command);
                 console.log('[WEB] PROJECT_PATH:', PROJECT_PATH);
                 
-                // Отправить начальное сообщение
-                try {
-                    res.write('data: ' + JSON.stringify({ type: 'output', data: 'Запуск теста на ' + target + '...\\n' }) + '\\n\\n');
-                } catch (e) {
-                    console.error('[WEB] Initial write error:', e);
-                }
-                
-                // Установить заголовки ДО выполнения команды
+                // Установить заголовки ПЕРЕД отправкой данных
                 res.writeHead(200, {
                     'Content-Type': 'text/event-stream',
                     'Cache-Control': 'no-cache',
@@ -280,6 +273,13 @@ const server = http.createServer((req, res) => {
                     'Access-Control-Allow-Origin': '*',
                     'X-Accel-Buffering': 'no'
                 });
+                
+                // Отправить начальное сообщение
+                try {
+                    res.write('data: ' + JSON.stringify({ type: 'output', data: 'Запуск теста на ' + target + '...\\n' }) + '\\n\\n');
+                } catch (e) {
+                    console.error('[WEB] Initial write error:', e);
+                }
                 
                 console.log('[WEB] Executing command:', command);
                 
