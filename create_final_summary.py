@@ -17,8 +17,8 @@ USERNAME = "root"
 PASSWORD = "m8J@2_6whwza6U"
 PROJECT_PATH = "/root/shannon-uncontained"
 
-def execute_command(client, command):
-    stdin, stdout, stderr = client.exec_command(command)
+def execute_command(client, command, timeout=60):
+    stdin, stdout, stderr = client.exec_command(command, timeout=timeout)
     exit_status = stdout.channel.recv_exit_status()
     output = stdout.read().decode('utf-8')
     error = stderr.read().decode('utf-8')
