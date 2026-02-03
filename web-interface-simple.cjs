@@ -246,13 +246,21 @@ const server = http.createServer((req, res) => {
         req.on('end', () => {
             try {
                 const { target } = JSON.parse(body);
+                
+                if (!target) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, error: 'Target is required' }));
+                    return;
+                }
                 // Использовать unbuffered вывод
                 // Извлечь домен из URL для определения workspace
-                const domain = target.replace(/^https?:\/\//, '').replace(/\/.*$/, '').split(':')[0];
+                let domain = target.replace(/^https?:\/\//, '').replace(/\/.*$/, '').split(':')[0];
+                // Экранировать специальные символы в домене
+                domain = domain.replace(/[^a-zA-Z0-9.-]/g, '');
                 const workspacePath = `${PROJECT_PATH}/shannon-results/repos/${domain}`;
                 
                 // Удалить существующий workspace чтобы запустить полный тест
-                const command = `cd ${PROJECT_PATH} && rm -rf "${workspacePath}" && export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && node shannon.mjs generate ${target} --no-ai 2>&1`;
+                const command = `cd ${PROJECT_PATH} && rm -rf "${workspacePath}" 2>/dev/null; export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && node shannon.mjs generate "${target}" --no-ai 2>&1`;
                 console.log('[WEB] Starting test:', target);
                 console.log('[WEB] Command:', command);
                 console.log('[WEB] PROJECT_PATH:', PROJECT_PATH);
@@ -264,6 +272,7 @@ const server = http.createServer((req, res) => {
                     console.error('[WEB] Initial write error:', e);
                 }
                 
+                // Установить заголовки ДО выполнения команды
                 res.writeHead(200, {
                     'Content-Type': 'text/event-stream',
                     'Cache-Control': 'no-cache',
@@ -272,7 +281,7 @@ const server = http.createServer((req, res) => {
                     'X-Accel-Buffering': 'no'
                 });
                 
-                console.log('[WEB] Executing command...');
+                console.log('[WEB] Executing command:', command);
                 
                 const child = exec(command, { 
                     cwd: PROJECT_PATH,
@@ -368,8 +377,15 @@ const server = http.createServer((req, res) => {
                     }
                 });
             } catch (error) {
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ success: false, error: error.message }));
+                console.error('[WEB] Request error:', error);
+                if (!res.headersSent) {
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, error: error.message }));
+                } else {
+                    res.write('data: ' + JSON.stringify({ type: 'error', data: 'Ошибка: ' + error.message + '\\n' }) + '\\n\\n');
+                    res.write('data: ' + JSON.stringify({ type: 'done', code: 1 }) + '\\n\\n');
+                    res.end();
+                }
             }
         });
         return;
