@@ -91,8 +91,9 @@ export class AuthFlowAnalyzer extends BaseAgent {
         const techEvents = ctx.evidenceGraph.getEventsByType('tech_detection');
         const authTech = this.detectAuthTechnology(techEvents);
 
-        // Use LLM for deeper analysis if we have auth endpoints
-        if (authEndpoints.length > 0 || authJsCalls.length > 0) {
+        // Use LLM for deeper analysis - улучшено: используем LLM даже при малом количестве данных
+        // Генерируем гипотезы об аутентификации даже если данных мало
+        if (this.llm?.isAvailable() && (authEndpoints.length > 0 || authJsCalls.length > 0 || endpoints.length > 0)) {
             ctx.recordTokens(1000);
 
             const prompt = this.buildPrompt(target, authEndpoints, authJsCalls, authTech);
@@ -147,6 +148,33 @@ export class AuthFlowAnalyzer extends BaseAgent {
                         claim.addEvidence('crawl_inferred', authTech.length);
                     }
                 }
+            }
+        }
+
+        // Генерация гипотез об аутентификации даже при отсутствии явных данных
+        if (this.llm?.isAvailable() && authEndpoints.length === 0 && authJsCalls.length === 0 && endpoints.length > 0) {
+            ctx.recordTokens(800);
+            const hypothesisPrompt = `Проанализируй endpoints приложения и сгенерируй гипотезы об аутентификации:
+            
+Target: ${target}
+Endpoints: ${JSON.stringify(endpoints.slice(0, 20).map(e => ({ path: e.attributes.path, method: e.attributes.method })), null, 2)}
+
+Определи возможные механизмы аутентификации, даже если явных признаков нет.`;
+            
+            const hypothesisResponse = await this.llm.generate(hypothesisPrompt, {
+                capability: LLM_CAPABILITIES.EXTRACT_CLAIMS,
+                maxTokens: 1500
+            });
+            
+            if (hypothesisResponse.success) {
+                ctx.recordTokens(hypothesisResponse.tokens_used);
+                // Добавляем гипотезы в результаты
+                results.hypotheses = results.hypotheses || [];
+                results.hypotheses.push({
+                    type: 'auth_mechanism_hypothesis',
+                    source: 'llm_analysis',
+                    confidence: 0.2
+                });
             }
         }
 

@@ -450,8 +450,9 @@ export class Orchestrator extends EventEmitter {
 
         this.emit('pipeline:init', { target, outputDir, stages: pipeline.length });
 
-        // RESUMABILITY: Load existing state if available
-        if (outputDir) {
+        // RESUMABILITY: Load existing state if available (ОТКЛЮЧЕНО для полного анализа)
+        // Для включения resume установите options.resume = true
+        if (options.resume && outputDir) {
             const { fs, path } = await import('zx');
             const stateFile = path.join(outputDir, 'world-model.json');
             const logFile = path.join(outputDir, 'execution-log.json');
@@ -525,8 +526,8 @@ export class Orchestrator extends EventEmitter {
             this.emit('resumed', { completed: completedAgents.size, agents: Array.from(completedAgents) });
 
             // Auto-exclude completed agents to prevent re-execution
-            // This enables true "resume" behavior
-            if (options.resume !== false) { // Default to true unless explicitly disabled
+            // This enables true "resume" behavior (ОТКЛЮЧЕНО по умолчанию)
+            if (options.resume === true) { // Только если явно включено
                 completedAgents.forEach(agent => {
                     if (!options.excludeAgents.includes(agent)) {
                         options.excludeAgents.push(agent);

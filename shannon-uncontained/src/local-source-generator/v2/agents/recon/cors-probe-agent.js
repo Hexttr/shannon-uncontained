@@ -7,6 +7,7 @@
 
 import { BaseAgent } from '../base-agent.js';
 import { EVENT_TYPES, createEvidenceEvent } from '../../worldmodel/evidence-graph.js';
+import { getLLMClient, LLM_CAPABILITIES } from '../../orchestrator/llm-client.js';
 import fetch from 'node-fetch';
 
 export class CORSProbeAgent extends BaseAgent {
@@ -43,9 +44,11 @@ export class CORSProbeAgent extends BaseAgent {
         this.default_budget = {
             max_time_ms: 60000,
             max_network_requests: 100,
-            max_tokens: 0,
+            max_tokens: 2000,  // Добавлено для LLM анализа
             max_tool_invocations: 0,
         };
+
+        this.llm = getLLMClient();
     }
 
     async run(ctx, inputs) {
@@ -134,6 +137,67 @@ export class CORSProbeAgent extends BaseAgent {
                 }
             } catch {
                 // Skip failed probes
+            }
+        }
+
+        // LLM анализ CORS конфигурации для выявления уязвимостей
+        if (this.llm?.isAvailable() && results.cors_enabled.length > 0) {
+            ctx.recordTokens(1000);
+            
+            const analysisPrompt = `Проанализируй CORS конфигурацию и определи потенциальные уязвимости:
+
+Target: ${target}
+CORS-enabled endpoints: ${JSON.stringify(results.cors_enabled, null, 2)}
+
+Задачи:
+1. Определи уязвимые CORS конфигурации (например, allow-origin: *, allow-credentials: true)
+2. Предложи методы эксплуатации найденных уязвимостей
+3. Оцени критичность каждой найденной конфигурации
+4. Предложи дополнительные endpoints для проверки CORS
+
+Верни JSON с анализом безопасности CORS.`;
+
+            const analysisResponse = await this.llm.generate(analysisPrompt, {
+                capability: LLM_CAPABILITIES.EXTRACT_CLAIMS,
+                maxTokens: 2000
+            });
+
+            if (analysisResponse.success) {
+                ctx.recordTokens(analysisResponse.tokens_used);
+                
+                try {
+                    const corsAnalysis = JSON.parse(analysisResponse.content);
+                    
+                    // Добавляем гипотезы об уязвимостях CORS
+                    if (corsAnalysis.vulnerabilities) {
+                        for (const vuln of corsAnalysis.vulnerabilities) {
+                            ctx.emitEvidence({
+                                type: 'cors_vulnerability_hypothesis',
+                                source: `${this.name}_llm`,
+                                data: {
+                                    endpoint: vuln.endpoint,
+                                    vulnerability_type: vuln.type,
+                                    severity: vuln.severity,
+                                    exploit_method: vuln.exploit_method,
+                                    confidence: vuln.confidence || 0.4
+                                }
+                            });
+
+                            // Создаем claim для уязвимости
+                            ctx.emitClaim({
+                                claim_type: 'cors_misconfiguration',
+                                subject: vuln.endpoint,
+                                predicate: {
+                                    vulnerability_type: vuln.type,
+                                    severity: vuln.severity
+                                },
+                                base_rate: vuln.confidence || 0.4
+                            });
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[CORSProbeAgent] LLM analysis parsing failed:', e.message);
+                }
             }
         }
 

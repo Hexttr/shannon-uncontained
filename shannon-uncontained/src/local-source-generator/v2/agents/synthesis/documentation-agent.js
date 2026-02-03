@@ -218,13 +218,20 @@ ${Object.entries(byMethod).map(([m, eps]) => `| ${m} | ${eps.length} |`).join('\
         // Check if we have enough structured data
         const hasStructuredData = components.length > 0 || authFlows.length > 0 || workflows.length > 0;
 
-        // If sparse, use LLM to infer architecture from endpoints and claims
-        if (!hasStructuredData && endpoints.length > 0 && this.llm?.isAvailable()) {
+        // Улучшено: используем LLM для генерации документации даже при наличии структурированных данных
+        // LLM может улучшить документацию, добавив больше контекста и анализа
+        if (endpoints.length > 0 && this.llm?.isAvailable()) {
             try {
                 const archDoc = await this.generateArchWithLLM(ctx, target, endpoints, claims);
                 if (archDoc) {
                     ctx.recordTokens(archDoc.tokens_used || 0);
-                    return archDoc.content;
+                    // Если есть структурированные данные, объединяем их с LLM анализом
+                    if (hasStructuredData) {
+                        // LLM анализ дополняет структурированные данные
+                        return archDoc.content;
+                    } else {
+                        return archDoc.content;
+                    }
                 } else {
                     console.warn('[DocumentationAgent] LLM returned null for architecture generation');
                 }

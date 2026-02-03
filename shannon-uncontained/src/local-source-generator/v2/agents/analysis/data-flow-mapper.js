@@ -129,16 +129,28 @@ export class DataFlowMapper extends BaseAgent {
 
         ctx.log(`Analyzing ${results.sources.length} sources and ${results.sinks.length} sinks with recursion depth ${recursion_depth}`);
 
-        // 3. Taint Analysis Phase
-        if (results.sources.length > 0 && results.sinks.length > 0) {
+        // 3. Taint Analysis Phase - улучшено: используем LLM даже при малом количестве источников/стоков
+        if (this.llm?.isAvailable() && (results.sources.length > 0 || results.sinks.length > 0 || endpoints.length > 0)) {
             ctx.recordTokens(3000);
 
             // Batch processing for large APIs
             const batchSize = 10;
-            for (let i = 0; i < results.sources.length; i += batchSize) {
-                const sourceBatch = results.sources.slice(i, i + batchSize);
+            const sourcesToAnalyze = results.sources.length > 0 ? results.sources : endpoints.slice(0, 10).map(e => ({
+                endpoint: e.attributes.path,
+                method: e.attributes.method,
+                source_type: 'endpoint',
+                risk: 'medium'
+            }));
+            
+            for (let i = 0; i < sourcesToAnalyze.length; i += batchSize) {
+                const sourceBatch = sourcesToAnalyze.slice(i, i + batchSize);
+                const sinksToAnalyze = results.sinks.length > 0 ? results.sinks : endpoints.slice(0, 10).map(e => ({
+                    endpoint: e.attributes.path,
+                    sink_type: 'potential_sink',
+                    risk: 'medium'
+                }));
 
-                const prompt = this.buildAdvancedPrompt(target, endpoints, sourceBatch, results.sinks, recursion_depth);
+                const prompt = this.buildAdvancedPrompt(target, endpoints, sourceBatch, sinksToAnalyze, recursion_depth);
 
                 const response = await this.llm.generateStructured(prompt, this.getOutputSchema(), {
                     capability: LLM_CAPABILITIES.CODE_ANALYSIS, // Use smarter model
@@ -185,6 +197,32 @@ export class DataFlowMapper extends BaseAgent {
                         }
                     }
                 }
+            }
+        }
+
+        // Генерация гипотез о потоках данных даже при отсутствии явных источников/стоков
+        if (this.llm?.isAvailable() && results.sources.length === 0 && results.sinks.length === 0 && endpoints.length > 0) {
+            ctx.recordTokens(2000);
+            const hypothesisPrompt = `Проанализируй endpoints и сгенерируй гипотезы о потенциальных потоках данных:
+            
+Target: ${target}
+Endpoints: ${JSON.stringify(endpoints.slice(0, 30).map(e => ({ path: e.attributes.path, method: e.attributes.method, params: e.attributes.params })), null, 2)}
+
+Определи потенциальные источники данных (user input) и стоки (sensitive operations), даже если явных признаков нет.`;
+            
+            const hypothesisResponse = await this.llm.generate(hypothesisPrompt, {
+                capability: LLM_CAPABILITIES.CODE_ANALYSIS,
+                maxTokens: 2500
+            });
+            
+            if (hypothesisResponse.success) {
+                ctx.recordTokens(hypothesisResponse.tokens_used);
+                results.hypotheses = results.hypotheses || [];
+                results.hypotheses.push({
+                    type: 'data_flow_hypothesis',
+                    source: 'llm_analysis',
+                    confidence: 0.25
+                });
             }
         }
 

@@ -7,6 +7,8 @@
 
 import { BaseAgent } from '../base-agent.js';
 import { runTool, isToolAvailable } from '../../tools/runners/tool-runner.js';
+import { getLLMClient, LLM_CAPABILITIES } from '../../orchestrator/llm-client.js';
+import fetch from 'node-fetch';
 
 export class WAFDetector extends BaseAgent {
     constructor(options = {}) {
@@ -45,9 +47,11 @@ export class WAFDetector extends BaseAgent {
         this.default_budget = {
             max_time_ms: 60000,
             max_network_requests: 10,
-            max_tokens: 0,
+            max_tokens: 2000,  // Добавлено для LLM анализа
             max_tool_invocations: 1
         };
+
+        this.llm = getLLMClient();
 
         // WAF fingerprints based on response patterns
         this.wafSignatures = {
@@ -327,6 +331,61 @@ export class WAFDetector extends BaseAgent {
             );
         }
 
+        // LLM анализ WAF для генерации гипотез об обходе
+        if (this.llm?.isAvailable() && result.detected) {
+            ctx.recordTokens(1000);
+            
+            const analysisPrompt = `Проанализируй обнаруженный WAF и предложи методы обхода:
+
+Target: ${target}
+WAF: ${result.waf}
+Manufacturer: ${result.manufacturer || 'unknown'}
+Evidence: ${JSON.stringify(result.evidence?.slice(0, 10) || [], null, 2)}
+Blocked Payloads: ${JSON.stringify(result.blockedPayloads?.slice(0, 10) || [], null, 2)}
+
+Задачи:
+1. Предложи методы обхода для данного WAF
+2. Определи слабые места в конфигурации WAF
+3. Предложи альтернативные payloads для обхода
+4. Оцени эффективность различных техник обхода
+
+Верни JSON с анализом и методами обхода.`;
+
+            const analysisResponse = await this.llm.generate(analysisPrompt, {
+                capability: LLM_CAPABILITIES.EXTRACT_CLAIMS,
+                maxTokens: 2000
+            });
+
+            if (analysisResponse.success) {
+                ctx.recordTokens(analysisResponse.tokens_used);
+                
+                try {
+                    const wafAnalysis = JSON.parse(analysisResponse.content);
+                    
+                    // Добавляем гипотезы об обходе WAF
+                    if (wafAnalysis.bypass_methods) {
+                        for (const bypassMethod of wafAnalysis.bypass_methods) {
+                            ctx.emitEvidence({
+                                type: 'waf_bypass_hypothesis',
+                                source: `${this.name}_llm`,
+                                data: {
+                                    method: bypassMethod.method,
+                                    payload: bypassMethod.payload,
+                                    success_probability: bypassMethod.success_probability || 0.3,
+                                    waf: result.waf
+                                }
+                            });
+                        }
+                    }
+
+                    // Добавляем результаты анализа в результат
+                    result.llm_analysis = wafAnalysis;
+                } catch (e) {
+                    console.warn('[WAFDetector] LLM analysis parsing failed:', e.message);
+                }
+            }
+        }
+
         return {
             detected: result.detected,
             waf: result.waf,
@@ -335,11 +394,13 @@ export class WAFDetector extends BaseAgent {
             evidence: result.evidence,
             blockedPayloads: result.blockedPayloads,
             tool,
+            llm_analysis: result.llm_analysis,
             implications: result.detected ? [
                 'Exploitation attempts may be blocked',
                 'Consider WAF bypass techniques',
                 'Adjust payload encoding',
-                'Some vulnerabilities may be harder to confirm'
+                'Some vulnerabilities may be harder to confirm',
+                ...(result.llm_analysis?.bypass_methods?.map(m => `Try bypass: ${m.method}`) || [])
             ] : []
         };
     }

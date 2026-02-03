@@ -7,6 +7,7 @@
 
 import { BaseAgent } from '../base-agent.js';
 import { runTool, isToolAvailable } from '../../tools/runners/tool-runner.js';
+import { getLLMClient, LLM_CAPABILITIES } from '../../orchestrator/llm-client.js';
 
 export class ContentDiscoveryAgent extends BaseAgent {
     constructor(options = {}) {
@@ -71,9 +72,11 @@ export class ContentDiscoveryAgent extends BaseAgent {
         this.default_budget = {
             max_time_ms: 300000,
             max_network_requests: 10000,
-            max_tokens: 0,
+            max_tokens: 3000,  // Добавлено для LLM анализа
             max_tool_invocations: 1
         };
+
+        this.llm = getLLMClient();
 
         // Interesting paths patterns
         this.sensitivePatterns = [
@@ -313,6 +316,76 @@ export class ContentDiscoveryAgent extends BaseAgent {
                     this.name,
                     evidenceId
                 );
+            }
+        }
+
+        // LLM анализ найденных путей для генерации гипотез и улучшения классификации
+        if (this.llm?.isAvailable() && discovered.length > 0) {
+            ctx.recordTokens(1000);
+            
+            // Подготовка данных для анализа
+            const sensitivePaths = discovered.filter(item => 
+                item.classifications.some(c => c !== 'discovered')
+            ).slice(0, 20);
+            
+            const analysisPrompt = `Проанализируй найденные пути и определи потенциальные уязвимости и риски:
+
+Target: ${target}
+Найдено путей: ${discovered.length}
+Чувствительные пути: ${JSON.stringify(sensitivePaths.map(p => ({ path: p.path, status: p.status, classifications: p.classifications })), null, 2)}
+
+Задачи:
+1. Определи потенциальные уязвимости для каждого чувствительного пути
+2. Предложи дополнительные пути для проверки на основе найденных паттернов
+3. Оцени критичность каждого найденного пути
+4. Предложи методы проверки найденных путей
+
+Верни JSON с анализом.`;
+
+            const analysisResponse = await this.llm.generate(analysisPrompt, {
+                capability: LLM_CAPABILITIES.EXTRACT_CLAIMS,
+                maxTokens: 2000
+            });
+
+            if (analysisResponse.success) {
+                ctx.recordTokens(analysisResponse.tokens_used);
+                
+                // Парсим ответ LLM и добавляем гипотезы
+                try {
+                    const llmAnalysis = JSON.parse(analysisResponse.content);
+                    
+                    // Добавляем гипотезы о дополнительных путях
+                    if (llmAnalysis.additional_paths) {
+                        for (const pathHypothesis of llmAnalysis.additional_paths) {
+                            ctx.emitEvidence({
+                                type: 'hidden_path_hypothesis',
+                                source: `${this.name}_llm`,
+                                data: {
+                                    path: pathHypothesis.path,
+                                    reason: pathHypothesis.reason,
+                                    confidence: pathHypothesis.confidence || 0.3
+                                }
+                            });
+                        }
+                    }
+
+                    // Улучшаем классификацию найденных путей
+                    if (llmAnalysis.vulnerability_assessment) {
+                        for (const assessment of llmAnalysis.vulnerability_assessment) {
+                            const foundPath = discovered.find(p => p.path === assessment.path);
+                            if (foundPath) {
+                                foundPath.llm_analysis = {
+                                    vulnerabilities: assessment.vulnerabilities || [],
+                                    risk_level: assessment.risk_level || 'medium',
+                                    recommendations: assessment.recommendations || []
+                                };
+                            }
+                        }
+                    }
+                } catch (e) {
+                    // Если не удалось распарсить JSON, просто логируем
+                    console.warn('[ContentDiscoveryAgent] LLM analysis parsing failed:', e.message);
+                }
             }
         }
 

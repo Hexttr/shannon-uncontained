@@ -67,7 +67,7 @@ export async function runCommand(target, options) {
         // Map 'run' command options to pipeline inputs
         const runOptions = {
             framework: 'express', // Default, could be inferred or flagged
-            resume: options.resume !== false, // Resume by default for 'run', unless --no-resume
+            resume: false, // Отключено для полного анализа каждый раз. Используйте --resume для включения
             // Metasploit config placeholders (run command might need to expose these flags too if not already)
         };
 

@@ -96,8 +96,8 @@ export class BusinessLogicAgent extends BaseAgent {
         // Group endpoints by resource
         const resourceGroups = this.groupEndpointsByResource(endpoints);
 
-        // Use LLM for deeper workflow inference
-        if (endpoints.length > 5) {
+        // Use LLM for deeper workflow inference - улучшено: используем LLM даже при малом количестве endpoints
+        if (this.llm?.isAvailable() && endpoints.length > 0) {
             ctx.recordTokens(1500);
 
             const prompt = this.buildPrompt(target, endpoints, forms, stateHints, resourceGroups);
@@ -134,6 +134,33 @@ export class BusinessLogicAgent extends BaseAgent {
 
                 // Process business rules
                 results.business_rules = response.data.business_rules || [];
+            }
+        }
+
+        // Генерация гипотез о бизнес-логике даже при малом количестве данных
+        if (this.llm?.isAvailable() && endpoints.length > 0 && endpoints.length <= 5) {
+            ctx.recordTokens(1000);
+            const hypothesisPrompt = `Проанализируй endpoints и сгенерируй гипотезы о бизнес-логике и workflow:
+            
+Target: ${target}
+Endpoints: ${JSON.stringify(endpoints.map(e => ({ path: e.attributes.path, method: e.attributes.method })), null, 2)}
+Forms: ${JSON.stringify(forms.slice(0, 10).map(f => f.payload), null, 2)}
+
+Определи возможные workflow и бизнес-правила, даже если данных мало.`;
+            
+            const hypothesisResponse = await this.llm.generate(hypothesisPrompt, {
+                capability: LLM_CAPABILITIES.INFER_ARCHITECTURE,
+                maxTokens: 2000
+            });
+            
+            if (hypothesisResponse.success) {
+                ctx.recordTokens(hypothesisResponse.tokens_used);
+                results.hypotheses = results.hypotheses || [];
+                results.hypotheses.push({
+                    type: 'business_logic_hypothesis',
+                    source: 'llm_analysis',
+                    confidence: 0.2
+                });
             }
         }
 
