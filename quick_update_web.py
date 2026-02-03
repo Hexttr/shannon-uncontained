@@ -23,9 +23,10 @@ print("[INFO] Загрузка web-interface.cjs...")
 
 # Загрузить файл
 sftp = client.open_sftp()
-with open('web-interface.cjs', 'r', encoding='utf-8') as f:
+with open('web-interface-simple.cjs', 'r', encoding='utf-8') as f:
     content = f.read()
 
+# Загрузить как web-interface.cjs
 with sftp.file(f'{PROJECT_PATH}/web-interface.cjs', 'w') as f:
     f.write(content)
 
