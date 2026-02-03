@@ -235,7 +235,7 @@ const html = `<!DOCTYPE html>
                 btn.disabled = false;
                 status.textContent = 'Ошибка: ' + error.message;
                 status.className = 'status error';
-                output.textContent += '\\n[ERROR] ' + error.message;
+                output.textContent += '\n[ERROR] ' + error.message;
             });
         }
         
