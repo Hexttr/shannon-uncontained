@@ -180,7 +180,7 @@ const html = `<!DOCTYPE html>
             
             statusDiv.innerHTML = '<div class="status info">Запуск теста...</div>';
             outputDiv.style.display = 'block';
-            outputDiv.textContent = 'Запуск...';
+            outputDiv.textContent = '';
             
             try {
                 const response = await fetch('/api/run-test', {
@@ -189,19 +189,41 @@ const html = `<!DOCTYPE html>
                     body: JSON.stringify({ target, framework })
                 });
                 
-                const data = await response.json();
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
                 
-                if (data.success) {
-                    statusDiv.innerHTML = '<div class="status success">Тест завершен успешно!</div>';
-                    outputDiv.textContent = data.output || 'Готово';
-                    loadWorkspaces();
-                } else {
-                    statusDiv.innerHTML = '<div class="status error">Ошибка: ' + data.error + '</div>';
-                    outputDiv.textContent = data.output || data.error;
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.slice(6));
+                                
+                                if (data.type === 'output' || data.type === 'error') {
+                                    outputDiv.textContent += data.data;
+                                    outputDiv.scrollTop = outputDiv.scrollHeight;
+                                } else if (data.type === 'done') {
+                                    if (data.code === 0) {
+                                        statusDiv.innerHTML = '<div class="status success">Тест завершен успешно!</div>';
+                                        loadWorkspaces();
+                                    } else {
+                                        statusDiv.innerHTML = '<div class="status error">Тест завершен с ошибкой (код: ' + data.code + ')</div>';
+                                    }
+                                }
+                            } catch (e) {
+                                // Игнорировать ошибки парсинга
+                            }
+                        }
+                    }
                 }
             } catch (error) {
                 statusDiv.innerHTML = '<div class="status error">Ошибка: ' + error.message + '</div>';
-                outputDiv.textContent = error.message;
+                outputDiv.textContent += '\n[ERROR] ' + error.message;
             }
         }
         
@@ -290,7 +312,7 @@ const server = http.createServer(async (req, res) => {
         return;
     }
     
-    // API: запуск теста
+    // API: запуск теста с потоковым выводом
     if (req.url === '/api/run-test' && req.method === 'POST') {
         let body = '';
         req.on('data', chunk => { body += chunk.toString(); });
@@ -299,12 +321,37 @@ const server = http.createServer(async (req, res) => {
                 const { target, framework } = JSON.parse(body);
                 const command = `cd ${PROJECT_PATH} && export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && node shannon.mjs generate ${target} --framework ${framework} 2>&1`;
                 
-                const { stdout, stderr } = await execAsync(command, { timeout: 600000 });
-                res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ success: true, output: stdout + stderr }));
+                // Установить заголовки для Server-Sent Events
+                res.writeHead(200, {
+                    'Content-Type': 'text/event-stream',
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'keep-alive',
+                    'Access-Control-Allow-Origin': '*'
+                });
+                
+                // Запустить команду с потоковым выводом
+                const child = exec(command, { cwd: PROJECT_PATH });
+                
+                child.stdout.on('data', (data) => {
+                    res.write(`data: ${JSON.stringify({ type: 'output', data: data.toString() })}\n\n`);
+                });
+                
+                child.stderr.on('data', (data) => {
+                    res.write(`data: ${JSON.stringify({ type: 'error', data: data.toString() })}\n\n`);
+                });
+                
+                child.on('close', (code) => {
+                    res.write(`data: ${JSON.stringify({ type: 'done', code: code })}\n\n`);
+                    res.end();
+                });
+                
+                child.on('error', (error) => {
+                    res.write(`data: ${JSON.stringify({ type: 'error', data: error.message })}\n\n`);
+                    res.end();
+                });
             } catch (error) {
                 res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ success: false, error: error.message, output: error.stdout || error.stderr || '' }));
+                res.end(JSON.stringify({ success: false, error: error.message }));
             }
         });
         return;
