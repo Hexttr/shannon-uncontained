@@ -209,12 +209,17 @@ const server = http.createServer(async (req, res) => {
         // Отправляем начальное сообщение
         res.write('data: ' + JSON.stringify({ type: 'output', data: 'Запуск пентеста для ' + target + '...\\n' }) + '\\n\\n');
         
-        // Запускаем команду
-        const command = `cd ${PROJECT_PATH} && export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin:$HOME/.cargo/bin:$HOME/.local/bin:/usr/local/bin && export GOPATH=$HOME/go && source $HOME/.cargo/env 2>/dev/null || true && ./shannon.mjs generate "${target}" --workspace ./test-output 2>&1`;
+        // Запускаем команду через bash с правильным окружением
+        const command = 'bash -c "cd ' + PROJECT_PATH + ' && export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin:$HOME/.cargo/bin:$HOME/.local/bin:/usr/local/bin && export GOPATH=$HOME/go && source $HOME/.cargo/env 2>/dev/null || true && ./shannon.mjs generate \\"' + target + '\\" --workspace ./test-output 2>&1"';
         
         const child = exec(command, {
             cwd: PROJECT_PATH,
-            env: { ...process.env, PATH: process.env.PATH + ':/usr/local/go/bin:/root/go/bin:/root/.cargo/bin:/root/.local/bin:/usr/local/bin' }
+            shell: '/bin/bash',
+            env: { 
+                ...process.env, 
+                PATH: process.env.PATH + ':/usr/local/go/bin:/root/go/bin:/root/.cargo/bin:/root/.local/bin:/usr/local/bin',
+                GOPATH: '/root/go'
+            }
         });
         
         // Отправляем вывод в реальном времени
