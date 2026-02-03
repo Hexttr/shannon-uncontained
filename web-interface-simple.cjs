@@ -159,10 +159,28 @@ const html = `<!DOCTYPE html>
             };
             
             eventSource.onerror = function(error) {
-                eventSource.close();
-                button.disabled = false;
-                statusDiv.innerHTML = '<div class="status error">Ошибка соединения</div>';
-                outputDiv.textContent += '\\n[ERROR] Соединение прервано\\n';
+                console.error('EventSource error:', error);
+                console.error('EventSource readyState:', eventSource.readyState);
+                
+                if (eventSource.readyState === EventSource.CLOSED) {
+                    eventSource.close();
+                    button.disabled = false;
+                    statusDiv.innerHTML = '<div class="status error">Соединение закрыто</div>';
+                    outputDiv.textContent += '\\n[ERROR] Соединение закрыто сервером\\n';
+                } else if (eventSource.readyState === EventSource.CONNECTING) {
+                    // Еще подключается, не закрываем
+                    console.log('EventSource connecting...');
+                } else {
+                    eventSource.close();
+                    button.disabled = false;
+                    statusDiv.innerHTML = '<div class="status error">Ошибка соединения. Проверьте консоль браузера (F12)</div>';
+                    outputDiv.textContent += '\\n[ERROR] Ошибка соединения. Проверьте логи на сервере.\\n';
+                }
+            };
+            
+            // Добавляем обработчик открытия соединения
+            eventSource.onopen = function(event) {
+                console.log('EventSource connection opened');
             };
         }
     </script>
@@ -247,9 +265,16 @@ const server = http.createServer(async (req, res) => {
         });
         
         child.on('error', (error) => {
-            res.write('data: ' + JSON.stringify({ type: 'error', data: error.message }) + '\\n\\n');
+            console.error('Command execution error:', error);
+            res.write('data: ' + JSON.stringify({ type: 'error', data: 'Ошибка выполнения команды: ' + error.message }) + '\\n\\n');
             res.write('data: ' + JSON.stringify({ type: 'done', code: 1 }) + '\\n\\n');
             res.end();
+        });
+        
+        // Обработка закрытия соединения клиентом
+        req.on('close', () => {
+            console.log('Client disconnected, killing process');
+            child.kill();
         });
         
         return;
