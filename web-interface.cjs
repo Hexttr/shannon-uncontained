@@ -1,19 +1,23 @@
 #!/usr/bin/env node
 /**
  * Простой веб-интерфейс для Shannon-Uncontained
- * Запуск: node web-interface.js
+ * Запуск: node web-interface.cjs
  * Доступ: http://localhost:3000
  */
 
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
-const { exec } = require('child_process');
-const { promisify } = require('util');
+import http from 'http';
+import fs from 'fs';
+import path from 'path';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const execAsync = promisify(exec);
 
 const PORT = 3000;
-const PROJECT_PATH = process.cwd();
+const PROJECT_PATH = __dirname;
 
 // HTML интерфейс
 const html = `<!DOCTYPE html>
