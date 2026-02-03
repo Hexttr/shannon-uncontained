@@ -342,7 +342,7 @@ const server = http.createServer((req, res) => {
                     const text = data.toString();
                     console.log('[WEB] stdout chunk', stdoutChunks, ':', text.length, 'bytes, preview:', text.substring(0, 100));
                     try {
-                        const message = 'data: ' + JSON.stringify({ type: 'output', data: text }) + '\\n\\n';
+                        const message = 'data: ' + JSON.stringify({ type: 'output', data: text }) + '\n\n';
                         if (!res.destroyed) {
                             res.write(message);
                         } else {
@@ -359,7 +359,7 @@ const server = http.createServer((req, res) => {
                     const text = data.toString();
                     console.log('[WEB] stderr chunk', stderrChunks, ':', text.length, 'bytes');
                     try {
-                        const message = 'data: ' + JSON.stringify({ type: 'error', data: text }) + '\\n\\n';
+                        const message = 'data: ' + JSON.stringify({ type: 'error', data: text }) + '\n\n';
                         if (!res.destroyed) {
                             res.write(message);
                         } else {
@@ -375,9 +375,9 @@ const server = http.createServer((req, res) => {
                     try {
                         if (!hasData) {
                             console.log('[WEB] No data received, sending warning');
-                            res.write('data: ' + JSON.stringify({ type: 'output', data: '\\n[WARNING] Команда завершилась без вывода. Код: ' + code + ', сигнал: ' + (signal || 'none') + '\\n' }) + '\\n\\n');
+                            res.write('data: ' + JSON.stringify({ type: 'output', data: '\n[WARNING] Команда завершилась без вывода. Код: ' + code + ', сигнал: ' + (signal || 'none') + '\n' }) + '\n\n');
                         }
-                        res.write('data: ' + JSON.stringify({ type: 'done', code: code }) + '\\n\\n');
+                        res.write('data: ' + JSON.stringify({ type: 'done', code: code }) + '\n\n');
                         res.end();
                     } catch (e) {
                         console.error('[WEB] Close error:', e);
