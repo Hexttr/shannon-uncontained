@@ -15,7 +15,7 @@ const execAsync = promisify(exec);
 const PORT = 3000;
 const PROJECT_PATH = __dirname || process.cwd();
 
-// HTML интерфейс
+// HTML интерфейс  
 const html = `<!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -496,7 +496,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Shannon-Uncontained Web Interface запущен на http://localhost:${PORT}`);
-    console.log(`Доступен на http://72.56.79.153:${PORT}`);
+    console.log('Shannon-Uncontained Web Interface запущен на http://localhost:' + PORT);
+    console.log('Доступен на http://72.56.79.153:' + PORT);
 });
 
