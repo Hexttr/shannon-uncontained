@@ -184,7 +184,7 @@ program
 
       // Import v2 Orchestrator
       const { createLSGv2 } = await import('./src/local-source-generator/v2/index.js');
-      const orchestrator = createLSGv2({ mode: 'live' });
+      const { orchestrator } = createLSGv2({ mode: 'live' });
 
       // Add event listeners for debugging
       orchestrator.on('synthesis:model-ready', (data) => {
