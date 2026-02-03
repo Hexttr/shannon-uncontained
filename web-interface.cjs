@@ -167,12 +167,17 @@ const html = `<!DOCTYPE html>
     </div>
     
     <script>
-        async function runTest() {
+        function runTest(event) {
+            console.log('runTest called', event);
+            event.preventDefault();
+            
             const target = document.getElementById('target').value;
             const framework = document.getElementById('framework').value;
             const statusDiv = document.getElementById('testStatus');
             const outputDiv = document.getElementById('testOutput');
-            const button = event.target;
+            const button = event.target || event.currentTarget;
+            
+            console.log('Target:', target, 'Framework:', framework);
             
             if (!target) {
                 statusDiv.innerHTML = '<div class="status error">Введите URL цели</div>';
@@ -180,18 +185,18 @@ const html = `<!DOCTYPE html>
             }
             
             // Блокировать кнопку
-            button.disabled = true;
+            if (button) button.disabled = true;
             statusDiv.innerHTML = '<div class="status info">Запуск теста...</div>';
             outputDiv.style.display = 'block';
             outputDiv.textContent = '';
             
-            try {
-                const response = await fetch('/api/run-test', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ target, framework })
-                });
-                
+            fetch('/api/run-test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target, framework })
+            })
+            .then(response => {
+                console.log('Response status:', response.status);
                 if (!response.ok) {
                     throw new Error('HTTP error: ' + response.status);
                 }
@@ -200,49 +205,62 @@ const html = `<!DOCTYPE html>
                 const decoder = new TextDecoder();
                 let buffer = '';
                 
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    
-                    buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split('\n');
-                    buffer = lines.pop() || ''; // Сохранить неполную строку
-                    
-                    for (const line of lines) {
-                        if (line.startsWith('data: ')) {
-                            try {
-                                const data = JSON.parse(line.slice(6));
-                                
-                                if (data.type === 'output' || data.type === 'error') {
-                                    outputDiv.textContent += data.data;
-                                    outputDiv.scrollTop = outputDiv.scrollHeight;
-                                } else if (data.type === 'done') {
-                                    button.disabled = false;
-                                    if (data.code === 0) {
-                                        statusDiv.innerHTML = '<div class="status success">Тест завершен успешно!</div>';
-                                        loadWorkspaces();
-                                    } else {
-                                        statusDiv.innerHTML = '<div class="status error">Тест завершен с ошибкой (код: ' + data.code + ')</div>';
+                function readStream() {
+                    reader.read().then(({ done, value }) => {
+                        if (done) {
+                            console.log('Stream done');
+                            if (button) button.disabled = false;
+                            statusDiv.innerHTML = '<div class="status info">Тест завершен</div>';
+                            loadWorkspaces();
+                            return;
+                        }
+                        
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split('\n');
+                        buffer = lines.pop() || '';
+                        
+                        for (const line of lines) {
+                            if (line.startsWith('data: ')) {
+                                try {
+                                    const data = JSON.parse(line.slice(6));
+                                    console.log('Received data:', data.type);
+                                    
+                                    if (data.type === 'output' || data.type === 'error') {
+                                        outputDiv.textContent += data.data;
+                                        outputDiv.scrollTop = outputDiv.scrollHeight;
+                                    } else if (data.type === 'done') {
+                                        if (button) button.disabled = false;
+                                        if (data.code === 0) {
+                                            statusDiv.innerHTML = '<div class="status success">Тест завершен успешно!</div>';
+                                            loadWorkspaces();
+                                        } else {
+                                            statusDiv.innerHTML = '<div class="status error">Тест завершен с ошибкой (код: ' + data.code + ')</div>';
+                                        }
+                                        return;
                                     }
-                                    return;
+                                } catch (e) {
+                                    console.error('Parse error:', e, line);
                                 }
-                            } catch (e) {
-                                console.error('Parse error:', e, line);
                             }
                         }
-                    }
+                        
+                        readStream();
+                    }).catch(error => {
+                        console.error('Read error:', error);
+                        if (button) button.disabled = false;
+                        statusDiv.innerHTML = '<div class="status error">Ошибка чтения: ' + error.message + '</div>';
+                        outputDiv.textContent += '\n[ERROR] ' + error.message;
+                    });
                 }
                 
-                // Если поток завершился без сообщения done
-                button.disabled = false;
-                statusDiv.innerHTML = '<div class="status info">Тест завершен</div>';
-                loadWorkspaces();
-            } catch (error) {
-                button.disabled = false;
+                readStream();
+            })
+            .catch(error => {
+                console.error('Fetch error:', error);
+                if (button) button.disabled = false;
                 statusDiv.innerHTML = '<div class="status error">Ошибка: ' + error.message + '</div>';
                 outputDiv.textContent += '\n[ERROR] ' + error.message;
-                console.error('Test error:', error);
-            }
+            });
         }
         
         async function loadWorkspaces() {
