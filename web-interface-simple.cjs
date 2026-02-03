@@ -387,8 +387,8 @@ const server = http.createServer((req, res) => {
                 child.on('error', (error) => {
                     console.error('[WEB] Process error:', error);
                     try {
-                        res.write('data: ' + JSON.stringify({ type: 'error', data: 'Ошибка запуска: ' + error.message + '\\n' }) + '\\n\\n');
-                        res.write('data: ' + JSON.stringify({ type: 'done', code: 1 }) + '\\n\\n');
+                        res.write('data: ' + JSON.stringify({ type: 'error', data: 'Ошибка запуска: ' + error.message + '\n' }) + '\n\n');
+                        res.write('data: ' + JSON.stringify({ type: 'done', code: 1 }) + '\n\n');
                         res.end();
                     } catch (e) {
                         console.error('[WEB] Error handler:', e);
@@ -411,8 +411,8 @@ const server = http.createServer((req, res) => {
                     res.writeHead(500, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ success: false, error: error.message }));
                 } else {
-                    res.write('data: ' + JSON.stringify({ type: 'error', data: 'Ошибка: ' + error.message + '\\n' }) + '\\n\\n');
-                    res.write('data: ' + JSON.stringify({ type: 'done', code: 1 }) + '\\n\\n');
+                    res.write('data: ' + JSON.stringify({ type: 'error', data: 'Ошибка: ' + error.message + '\n' }) + '\n\n');
+                    res.write('data: ' + JSON.stringify({ type: 'done', code: 1 }) + '\n\n');
                     res.end();
                 }
             }
