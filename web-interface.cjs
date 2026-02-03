@@ -169,7 +169,7 @@ const html = `<!DOCTYPE html>
     <script>
         function runTest(event) {
             console.log('runTest called', event);
-            event.preventDefault();
+            if (event) event.preventDefault();
             
             const target = document.getElementById('target').value;
             const framework = document.getElementById('framework').value;
@@ -249,7 +249,7 @@ const html = `<!DOCTYPE html>
                         console.error('Read error:', error);
                         if (button) button.disabled = false;
                         statusDiv.innerHTML = '<div class="status error">Ошибка чтения: ' + error.message + '</div>';
-                        outputDiv.textContent += '\n[ERROR] ' + error.message;
+                        outputDiv.textContent += String.fromCharCode(10) + '[ERROR] ' + error.message;
                     });
                 }
                 
