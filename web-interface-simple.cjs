@@ -291,7 +291,9 @@ const server = http.createServer((req, res) => {
                         PYTHONUNBUFFERED: '1',
                         NODE_NO_WARNINGS: '1'
                     },
-                    maxBuffer: 10 * 1024 * 1024 // 10MB
+                    maxBuffer: 10 * 1024 * 1024, // 10MB
+                    killSignal: 'SIGKILL', // Использовать SIGKILL вместо SIGTERM
+                    timeout: 0 // Без таймаута
                 }, (error, stdout, stderr) => {
                     console.log('[WEB] Exec callback - error:', error ? error.message : 'none');
                     console.log('[WEB] Exec callback - stdout length:', stdout ? stdout.length : 0);
@@ -371,11 +373,12 @@ const server = http.createServer((req, res) => {
                     console.log('[WEB] Process exit - code:', code, 'signal:', signal);
                 });
                 
-                req.on('close', () => {
-                    if (!child.killed) {
-                        child.kill('SIGTERM');
-                    }
-                });
+                // НЕ убивать процесс при закрытии соединения - пусть тест выполняется
+                // req.on('close', () => {
+                //     if (!child.killed) {
+                //         child.kill('SIGTERM');
+                //     }
+                // });
             } catch (error) {
                 console.error('[WEB] Request error:', error);
                 if (!res.headersSent) {
