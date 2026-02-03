@@ -328,12 +328,12 @@ const server = http.createServer((req, res) => {
                     }
                 });
                 
-                child.on('close', (code) => {
-                    console.log('[WEB] Process closed with code:', code, 'hasData:', hasData);
+                child.on('close', (code, signal) => {
+                    console.log('[WEB] Process closed - code:', code, 'signal:', signal, 'hasData:', hasData, 'stdoutChunks:', stdoutChunks, 'stderrChunks:', stderrChunks);
                     try {
                         if (!hasData) {
                             console.log('[WEB] No data received, sending warning');
-                            res.write('data: ' + JSON.stringify({ type: 'output', data: '\\n[WARNING] Команда завершилась без вывода. Код: ' + code + '\\n' }) + '\\n\\n');
+                            res.write('data: ' + JSON.stringify({ type: 'output', data: '\\n[WARNING] Команда завершилась без вывода. Код: ' + code + ', сигнал: ' + (signal || 'none') + '\\n' }) + '\\n\\n');
                         }
                         res.write('data: ' + JSON.stringify({ type: 'done', code: code }) + '\\n\\n');
                         res.end();
@@ -343,13 +343,18 @@ const server = http.createServer((req, res) => {
                 });
                 
                 child.on('error', (error) => {
+                    console.error('[WEB] Process error:', error);
                     try {
                         res.write('data: ' + JSON.stringify({ type: 'error', data: 'Ошибка запуска: ' + error.message + '\\n' }) + '\\n\\n');
                         res.write('data: ' + JSON.stringify({ type: 'done', code: 1 }) + '\\n\\n');
                         res.end();
                     } catch (e) {
-                        console.error('Error handler:', e);
+                        console.error('[WEB] Error handler:', e);
                     }
+                });
+                
+                child.on('exit', (code, signal) => {
+                    console.log('[WEB] Process exit - code:', code, 'signal:', signal);
                 });
                 
                 req.on('close', () => {
