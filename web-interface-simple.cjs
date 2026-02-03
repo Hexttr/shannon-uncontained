@@ -221,11 +221,12 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(200, {
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive'
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no'
         });
         
-        // Отправляем начальное сообщение
-        res.write('data: ' + JSON.stringify({ type: 'output', data: 'Запуск пентеста для ' + target + '...\\n' }) + '\\n\\n');
+        // Отправляем начальное сообщение (используем реальные переводы строк)
+        res.write('data: ' + JSON.stringify({ type: 'output', data: 'Запуск пентеста для ' + target + '...\n' }) + '\n\n');
         
         // Запускаем команду через bash с правильным окружением
         const command = 'bash -c "cd ' + PROJECT_PATH + ' && export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin:$HOME/.cargo/bin:$HOME/.local/bin:/usr/local/bin && export GOPATH=$HOME/go && source $HOME/.cargo/env 2>/dev/null || true && ./shannon.mjs generate \\"' + target + '\\" --workspace ./test-output 2>&1"';
@@ -240,41 +241,69 @@ const server = http.createServer(async (req, res) => {
             }
         });
         
-        // Отправляем вывод в реальном времени
+        // Отправляем вывод в реальном времени (используем реальные переводы строк)
         child.stdout.on('data', (data) => {
-            const lines = data.toString().split('\\n');
-            for (const line of lines) {
-                if (line.trim()) {
-                    res.write('data: ' + JSON.stringify({ type: 'output', data: line + '\\n' }) + '\\n\\n');
-                }
+            try {
+                const text = data.toString();
+                // Отправляем данные как есть, без разбиения на строки
+                res.write('data: ' + JSON.stringify({ type: 'output', data: text }) + '\n\n');
+            } catch (e) {
+                // Игнорировать ошибки записи если клиент отключился
             }
         });
         
         child.stderr.on('data', (data) => {
-            const lines = data.toString().split('\\n');
-            for (const line of lines) {
-                if (line.trim()) {
-                    res.write('data: ' + JSON.stringify({ type: 'error', data: line + '\\n' }) + '\\n\\n');
-                }
+            try {
+                const text = data.toString();
+                res.write('data: ' + JSON.stringify({ type: 'error', data: text }) + '\n\n');
+            } catch (e) {
+                // Игнорировать ошибки записи если клиент отключился
             }
         });
         
         child.on('close', (code) => {
-            res.write('data: ' + JSON.stringify({ type: 'done', code: code }) + '\\n\\n');
-            res.end();
+            try {
+                res.write('data: ' + JSON.stringify({ type: 'done', code: code }) + '\n\n');
+                res.end();
+            } catch (e) {
+                // Игнорировать ошибки записи если клиент отключился
+            }
         });
         
         child.on('error', (error) => {
             console.error('Command execution error:', error);
-            res.write('data: ' + JSON.stringify({ type: 'error', data: 'Ошибка выполнения команды: ' + error.message }) + '\\n\\n');
-            res.write('data: ' + JSON.stringify({ type: 'done', code: 1 }) + '\\n\\n');
-            res.end();
+            try {
+                res.write('data: ' + JSON.stringify({ type: 'error', data: 'Ошибка выполнения команды: ' + error.message }) + '\n\n');
+                res.write('data: ' + JSON.stringify({ type: 'done', code: 1 }) + '\n\n');
+                res.end();
+            } catch (e) {
+                // Игнорировать ошибки записи если клиент отключился
+            }
         });
         
         // Обработка закрытия соединения клиентом
         req.on('close', () => {
             console.log('Client disconnected, killing process');
-            child.kill();
+            if (!child.killed) {
+                child.kill();
+            }
+        });
+        
+        // Отправляем ping каждые 30 секунд чтобы соединение не закрывалось
+        const pingInterval = setInterval(() => {
+            try {
+                res.write(': ping\n\n');
+            } catch (e) {
+                clearInterval(pingInterval);
+            }
+        }, 30000);
+        
+        child.on('close', () => {
+            clearInterval(pingInterval);
+        });
+        
+        child.on('error', () => {
+            clearInterval(pingInterval);
         });
         
         return;
