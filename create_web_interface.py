@@ -428,8 +428,8 @@ const server = http.createServer(async (req, res) => {{
 }});
 
 server.listen(PORT, '0.0.0.0', () => {{
-    console.log(`🚀 Shannon-Uncontained Web Interface запущен на http://localhost:${{PORT}}`);
-    console.log(`📊 Доступен на http://72.56.79.153:${{PORT}}`);
+    console.log('Shannon-Uncontained Web Interface запущен на http://localhost:' + PORT);
+    console.log('Доступен на http://72.56.79.153:' + PORT);
 }});
 """
     
