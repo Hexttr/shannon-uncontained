@@ -132,7 +132,7 @@ const html = `<!DOCTYPE html>
             btn.disabled = true;
             status.textContent = 'Запуск теста...';
             status.className = 'status';
-            output.textContent = 'Запуск теста на ' + target + '...\\n\\n';
+            output.textContent = 'Запуск теста на ' + target + '...\n\n';
             
             console.log('[CLIENT] Starting fetch to /api/run-test');
             console.log('[CLIENT] Target:', target);
@@ -190,7 +190,8 @@ const html = `<!DOCTYPE html>
                                         if (data.type === 'output' || data.type === 'error') {
                                             if (data.data) {
                                                 // Заменить экранированные символы на реальные
-                                                const displayData = data.data.replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+                                                // data.data уже содержит реальные символы новой строки из JSON
+                                                const displayData = data.data;
                                                 output.textContent += displayData;
                                                 // Автопрокрутка
                                                 output.scrollTop = output.scrollHeight;
@@ -224,7 +225,7 @@ const html = `<!DOCTYPE html>
                         btn.disabled = false;
                         status.textContent = 'Ошибка: ' + error.message;
                         status.className = 'status error';
-                        output.textContent += '\\n[ERROR] ' + error.message;
+                        output.textContent += '\n[ERROR] ' + error.message;
                     });
                 }
                 
