@@ -173,13 +173,17 @@ const html = `<!DOCTYPE html>
                         buffer = lines.pop() || '';
                         
                         for (const line of lines) {
-                            if (line.startsWith('data: ')) {
+                            if (line.trim() && line.startsWith('data: ')) {
                                 try {
-                                    const data = JSON.parse(line.slice(6));
-                                    console.log('[CLIENT] Parsed data:', data.type);
+                                    const jsonStr = line.slice(6).trim();
+                                    if (!jsonStr) continue;
+                                    const data = JSON.parse(jsonStr);
+                                    console.log('[CLIENT] Parsed data:', data.type, 'data length:', data.data ? data.data.length : 0);
                                     if (data.type === 'output' || data.type === 'error') {
-                                        output.textContent += data.data;
-                                        output.scrollTop = output.scrollHeight;
+                                        if (data.data) {
+                                            output.textContent += data.data;
+                                            output.scrollTop = output.scrollHeight;
+                                        }
                                     } else if (data.type === 'done') {
                                         console.log('[CLIENT] Test done, code:', data.code);
                                         btn.disabled = false;
@@ -188,7 +192,7 @@ const html = `<!DOCTYPE html>
                                         return;
                                     }
                                 } catch (e) {
-                                    console.error('[CLIENT] Parse error:', e, 'line:', line.substring(0, 100));
+                                    console.error('[CLIENT] Parse error:', e, 'line:', line.substring(0, 200));
                                 }
                             }
                         }
