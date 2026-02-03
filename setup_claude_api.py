@@ -18,7 +18,8 @@ SERVER_PASSWORD = "m8J@2_6whwza6U"
 SERVER_PORT = 22
 
 # Claude API ключ (НЕ коммитить в git!)
-CLAUDE_API_KEY = "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"
+# Установите ключ через переменную окружения или .env файл
+CLAUDE_API_KEY = process.env.ANTHROPIC_API_KEY || ""
 CLAUDE_MODEL = "claude-3-5-sonnet-20241022"
 
 def connect_to_server():
