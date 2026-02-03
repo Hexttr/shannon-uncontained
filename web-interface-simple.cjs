@@ -31,7 +31,7 @@ const html = `<!DOCTYPE html>
             margin: 0 auto;
         }
         h1 {
-            color: #4ec9b0;
+            color: #f48771;
             margin-bottom: 20px;
             font-size: 24px;
         }
@@ -233,6 +233,8 @@ const server = http.createServer((req, res) => {
                 const { target } = JSON.parse(body);
                 // Использовать unbuffered вывод
                 const command = `cd ${PROJECT_PATH} && export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && node shannon.mjs generate ${target} --no-ai 2>&1`;
+                console.log('[WEB] Starting test:', target);
+                console.log('[WEB] Command:', command);
                 
                 res.writeHead(200, {
                     'Content-Type': 'text/event-stream',
@@ -262,13 +264,16 @@ const server = http.createServer((req, res) => {
                 child.stdout.on('data', (data) => {
                     hasData = true;
                     const text = data.toString();
+                    console.log('[WEB] stdout chunk:', text.length, 'bytes');
                     try {
                         const message = 'data: ' + JSON.stringify({ type: 'output', data: text }) + '\\n\\n';
                         if (!res.destroyed) {
                             res.write(message);
+                        } else {
+                            console.log('[WEB] Response destroyed, stopping');
                         }
                     } catch (e) {
-                        // Игнорировать ошибки если соединение закрыто
+                        console.error('[WEB] Write error:', e);
                     }
                 });
                 
@@ -286,14 +291,16 @@ const server = http.createServer((req, res) => {
                 });
                 
                 child.on('close', (code) => {
+                    console.log('[WEB] Process closed with code:', code, 'hasData:', hasData);
                     try {
                         if (!hasData) {
+                            console.log('[WEB] No data received, sending warning');
                             res.write('data: ' + JSON.stringify({ type: 'output', data: '\\n[WARNING] Команда завершилась без вывода. Код: ' + code + '\\n' }) + '\\n\\n');
                         }
                         res.write('data: ' + JSON.stringify({ type: 'done', code: code }) + '\\n\\n');
                         res.end();
                     } catch (e) {
-                        console.error('Close error:', e);
+                        console.error('[WEB] Close error:', e);
                     }
                 });
                 
