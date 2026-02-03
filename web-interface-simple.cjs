@@ -229,7 +229,7 @@ const server = http.createServer(async (req, res) => {
         res.write('data: ' + JSON.stringify({ type: 'output', data: 'Запуск пентеста для ' + target + '...\n' }) + '\n\n');
         
         // Запускаем команду через bash с правильным окружением
-        const command = 'bash -c "cd ' + PROJECT_PATH + ' && export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin:$HOME/.cargo/bin:$HOME/.local/bin:/usr/local/bin && export GOPATH=$HOME/go && source $HOME/.cargo/env 2>/dev/null || true && ./shannon.mjs generate \\"' + target + '\\" --workspace ./test-output 2>&1"';
+        const command = 'bash -c "cd ' + PROJECT_PATH + ' && export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin:$HOME/.cargo/bin:$HOME/.local/bin:/usr/local/bin && export GOPATH=$HOME/go && source $HOME/.cargo/env 2>/dev/null || true && ./shannon.mjs generate \\"' + target + '\\" --output ./test-output 2>&1"';
         
         const child = exec(command, {
             cwd: PROJECT_PATH,
