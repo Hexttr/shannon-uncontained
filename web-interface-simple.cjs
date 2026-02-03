@@ -231,8 +231,8 @@ const server = http.createServer((req, res) => {
         req.on('end', () => {
             try {
                 const { target } = JSON.parse(body);
-                // Использовать unbuffered вывод и отключить resume для нового теста
-                const command = `cd ${PROJECT_PATH} && export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && node -u shannon.mjs generate ${target} --no-ai 2>&1 | stdbuf -oL -eL cat`;
+                // Использовать unbuffered вывод
+                const command = `cd ${PROJECT_PATH} && export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && node shannon.mjs generate ${target} --no-ai 2>&1`;
                 
                 res.writeHead(200, {
                     'Content-Type': 'text/event-stream',
@@ -264,11 +264,11 @@ const server = http.createServer((req, res) => {
                     const text = data.toString();
                     try {
                         const message = 'data: ' + JSON.stringify({ type: 'output', data: text }) + '\\n\\n';
-                        res.write(message);
-                        // Принудительно отправить данные
-                        if (res.flushHeaders) res.flushHeaders();
+                        if (!res.destroyed) {
+                            res.write(message);
+                        }
                     } catch (e) {
-                        console.error('Write error:', e);
+                        // Игнорировать ошибки если соединение закрыто
                     }
                 });
                 
@@ -277,10 +277,11 @@ const server = http.createServer((req, res) => {
                     const text = data.toString();
                     try {
                         const message = 'data: ' + JSON.stringify({ type: 'error', data: text }) + '\\n\\n';
-                        res.write(message);
-                        if (res.flushHeaders) res.flushHeaders();
+                        if (!res.destroyed) {
+                            res.write(message);
+                        }
                     } catch (e) {
-                        console.error('Write error:', e);
+                        // Игнорировать ошибки если соединение закрыто
                     }
                 });
                 
