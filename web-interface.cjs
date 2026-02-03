@@ -5,19 +5,15 @@
  * Доступ: http://localhost:3000
  */
 
-import http from 'http';
-import fs from 'fs';
-import path from 'path';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const { exec } = require('child_process');
+const { promisify } = require('util');
 const execAsync = promisify(exec);
 
 const PORT = 3000;
-const PROJECT_PATH = __dirname;
+const PROJECT_PATH = __dirname || process.cwd();
 
 // HTML интерфейс
 const html = `<!DOCTYPE html>
