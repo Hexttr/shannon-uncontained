@@ -247,7 +247,12 @@ const server = http.createServer((req, res) => {
             try {
                 const { target } = JSON.parse(body);
                 // Использовать unbuffered вывод
-                const command = `cd ${PROJECT_PATH} && export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && node shannon.mjs generate ${target} --no-ai 2>&1`;
+                // Извлечь домен из URL для определения workspace
+                const domain = target.replace(/^https?:\/\//, '').replace(/\/.*$/, '').split(':')[0];
+                const workspacePath = `${PROJECT_PATH}/shannon-results/repos/${domain}`;
+                
+                // Удалить существующий workspace чтобы запустить полный тест
+                const command = `cd ${PROJECT_PATH} && rm -rf "${workspacePath}" && export NVM_DIR="$HOME/.nvm" && [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && node shannon.mjs generate ${target} --no-ai 2>&1`;
                 console.log('[WEB] Starting test:', target);
                 console.log('[WEB] Command:', command);
                 console.log('[WEB] PROJECT_PATH:', PROJECT_PATH);
